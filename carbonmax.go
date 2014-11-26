@@ -31,7 +31,7 @@ func feedcarbon(status map[string]string, carbonlink map[string]string) {
 
         conn, err := net.Dial("tcp", carbonlink["server"] + ":" + carbonlink["port"])
         if err != nil {
-                log.Fatal("Can not connect the carbon-cache, Please check setting")
+                log.Println("Can not connect the carbon-cache, Please check setting")
         }
         defer conn.Close()
 
