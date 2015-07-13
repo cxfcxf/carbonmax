@@ -1,0 +1,22 @@
+{
+	"carbonlink":{
+		"server": <%= @carbon-cache %>,
+		"client": <%= @location %>.<%= @hostname %>,
+		"exectimeout": 2,
+		"interval": 60,
+		"verbose": true,
+		"daemonize": true
+	},
+	"metric":{
+		"LoadAvg1min": "cat loadavg | awk '{print $1}'",
+		"LoadAvg5min": "cat loadavg | awk '{print $2}'",
+		"LoadAvg15min": "cat /proc/loadavg | awk '{print $3}'",
+		"MemUsed": "echo $((`free|grep Mem:|awk '{print $3}'`*1000))",
+		"SwapUsed": "echo $((`free|grep Swap:|awk '{print $3}'`*1000))",
+		"TotalProc": "ps -ef | wc -l",
+		"NgxConnections": "curl -s http://localhost/server-status |grep Active|awk '{print $3}'",
+		"NgxReading": "curl -s http://localhost/server-status |grep Reading|awk '{print $2}'",
+		"NgxWriting": "curl -s http://localhost/server-status |grep Writing|awk '{print $4}'",
+		"NgxWaiting": "curl -s http://localhost/server-status |grep Waiting|awk '{print $6}'"
+	}
+}

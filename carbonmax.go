@@ -1,123 +1,113 @@
 package main
 
 import (
-        "fmt"
-        "time"
-        "strings"
-        "strconv"
-        "net"
-        "log"
-        "os/exec"
-        "sync"
-        "flag"
-        "runtime"
-        "github.com/vaughan0/go-ini"
+    "os"
+    "fmt"
+    "net"
+    "log"
+    "time"
+    "flag"
+    "sync"
+    "os/exec"
+    "strings"
+    "io/ioutil"
+    "encoding/json"
 )
 
 var (
-        inifile = flag.String("inifile","/etc/carbonmax.ini", "path to your ini config file")
-        loop = flag.Bool("loop", false, "switch on if you want to loop the program for daemonization")
+    f = flag.String("f","/etc/carbonmax/config.json", "path to your config file")
 )
 
-func iniParser(inifile string) (map[string]string, map[string]string){
-        file, err := ini.LoadFile(inifile)
-        if err != nil {
-                log.Fatal(err)
-        }
-        return file["carbonlink"], file["resources"]
+type Config struct {
+    Carbonlink  *Carbonlink
+    Metric      map[string]string
 }
 
-func feedcarbon(status map[string]string, carbonlink map[string]string) {
-
-        conn, err := net.Dial("tcp", carbonlink["server"] + ":" + carbonlink["port"])
-        if err != nil {
-                log.Println("Can not connect the carbon-cache, Please check setting")
-        }
-        defer conn.Close()
-
-        var message string
-        for mn, ms := range status {
-                message = message + fmt.Sprintf("%s.%s %s %d\n", carbonlink["client"], mn, ms, time.Now().Unix())
-        }
-
-        conn.Write([]byte(message))
-        verbose, _ := strconv.ParseBool(carbonlink["verbose"])
-        if verbose {
-                fmt.Println(message)
-        }
+type Carbonlink struct {
+    Server       string
+    Client       string
+    Exectimeout  time.Duration
+    Interval     time.Duration
+    Verbose      bool
+    Daemonize    bool
 }
 
-func cmdExec(name string, command string, timeout string, status map[string]string, wg *sync.WaitGroup) {
-        defer wg.Done()
-        ch := make(chan string, 1)
-        to, _ := time.ParseDuration(timeout)
-        go func() {
-                result, _ := exec.Command("sh", "-c", command).Output()
-                ch <- string(result)
-        }()
+func feedcarbon(status map[string]string, carbonlink *Carbonlink) {
 
-        select {
-        case result := <-ch:
-                if result != "" {
-                        res := strings.Trim(result,"\n")
-                        status[name] = res
-                }
-        case <-time.After(to):
-                log.Printf("%s execution timed out", name)
+    conn, err := net.Dial("tcp", carbonlink.Server)
+    if err != nil {
+        log.Println("Can not connect the carbon-cache, Please check setting")
+    }
+    defer conn.Close()
+
+    var message string
+    for mn, ms := range status {
+        message = message + fmt.Sprintf("%s.%s %s %d\n", carbonlink.Client, mn, ms, time.Now().Unix())
+    }
+
+    conn.Write([]byte(message))
+
+    if carbonlink.Verbose {
+        log.Printf("\n%s", message)
+    }
+}
+
+func cmdExec(name string, command string, timeout time.Duration, status map[string]string, wg *sync.WaitGroup) {
+
+    defer wg.Done()
+    ch := make(chan string, 1)
+    go func() {
+        result, _ := exec.Command("sh", "-c", command).Output()
+        ch <- string(result)
+    }()
+
+    select {
+    case result := <-ch:
+        if result != "" {
+            res := strings.Trim(result,"\n")
+            status[name] = res
         }
+    case <-time.After(timeout * time.Second):
+        log.Printf("%s execution timed out", name)
+    }
+}
+
+func loadConf(config string) Config{
+    f, err := ioutil.ReadFile(config)
+    if err != nil {
+        log.Panic(err)
+    }
+
+    var conf Config
+    err = json.Unmarshal(f, &conf)
+    if err != nil {
+        log.Panic(err)
+    }
+    return conf
 }
 
 func main() {
-        flag.Parse()
+    flag.Parse()
 
-        var wg sync.WaitGroup
+    var wg sync.WaitGroup
+    status := make(map[string]string)
 
-        if *loop {
-                log.Println("Now Looping Carbonmax at Given Interval")
-
-                for {
-                        carbonlink, resources := iniParser(*inifile)
-                        cpus, err := strconv.Atoi(carbonlink["cpus"])
-                        if err != nil {
-                                runtime.GOMAXPROCS(1)
-                        } else {
-                                runtime.GOMAXPROCS(cpus)
-                        }
-
-                        status := make(map[string]string)
-
-                        for k, v := range resources {
-                                if k != "" && v != "" {
-                                        wg.Add(1)
-                                        go cmdExec(k, strings.Trim(v, "`"), carbonlink["exectimeout"], status, &wg)
-                                }
-                        }
-                        wg.Wait()
-
-                        feedcarbon(status, carbonlink)
-                        interval, _ := time.ParseDuration(carbonlink["interval"])
-
-                        time.Sleep(interval)
-                }
-        } else {
-                carbonlink, resources := iniParser(*inifile)
-                cpus, err := strconv.Atoi(carbonlink["cpus"])
-                if err != nil {
-                        runtime.GOMAXPROCS(1)
-                } else {
-                        runtime.GOMAXPROCS(cpus)
-                }
-
-                status := make(map[string]string)
-
-                for k, v := range resources {
-                        if k != "" && v != "" {
-                                        wg.Add(1)
-                                go cmdExec(k, strings.Trim(v, "`"), carbonlink["exectimeout"], status, &wg)
-                        }
-                }
-                wg.Wait()
-
-                feedcarbon(status, carbonlink)
+    for {
+        conf := loadConf(*f)
+        for k, v := range conf.Metric {
+            if k != "" && v != "" {
+                wg.Add(1)
+                go cmdExec(k, v, conf.Carbonlink.Exectimeout, status, &wg)
+            }
         }
+        wg.Wait()
+
+        feedcarbon(status, conf.Carbonlink)
+
+        if !conf.Carbonlink.Daemonize {
+            os.Exit(0)
+        }
+
+        time.Sleep(conf.Carbonlink.Interval * time.Second)
+    }
 }
