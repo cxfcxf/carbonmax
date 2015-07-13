@@ -15,7 +15,7 @@ import (
 )
 
 var (
-    f = flag.String("f","/etc/carbonmax/config.json", "path to your config file")
+    f = flag.String("f","/etc/carbonmax.json", "path to your config file")
 )
 
 type Config struct {
