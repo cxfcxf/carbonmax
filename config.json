@@ -4,8 +4,8 @@
 		"client": <%= @location %>.<%= @hostname %>,
 		"exectimeout": 2,
 		"interval": 60,
-		"verbose": true,
-		"daemonize": true
+		"verbose": false,
+		"daemonize": false
 	},
 	"metric":{
 		"LoadAvg1min": "cat loadavg | awk '{print $1}'",
