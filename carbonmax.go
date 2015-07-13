@@ -64,8 +64,16 @@ func cmdExec(name string, command string, timeout time.Duration, status map[stri
     select {
     case result := <-ch:
         if result != "" {
-            res := strings.Trim(result,"\n")
-            status[name] = res
+            nsl := strings.Split(name, "|")
+            metrics := strings.Split(strings.Trim(result,"\n"), "|")
+            if len(nsl) == len(metrics) {
+                for i, n := range nsl {
+                    status[n] = metrics[i]
+                }
+            } else {
+                log.Panic("number between metrics and name not match")
+            }
+
         }
     case <-time.After(timeout * time.Second):
         log.Printf("%s execution timed out", name)

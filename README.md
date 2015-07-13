@@ -10,6 +10,8 @@ carbonlink: is for carbonmax(agent) setting
 metric describe the metric and data which gernated by a system command or a sctipt
 you can also create a script which will return the data you want to assign to the metric
 
+please check syntax on config.json if you want multiple return!
+OFS must be "|", and please match both part
 
 ##how to run or install
 ```
