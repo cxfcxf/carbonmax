@@ -32,7 +32,12 @@ type Carbonlink struct {
     Daemonize    bool
 }
 
-func feedcarbon(status map[string]string, carbonlink *Carbonlink) {
+type Status struct {
+    sync.Mutex
+    S map[string]string
+}
+
+func feedcarbon(status Status, carbonlink *Carbonlink) {
 
     conn, err := net.Dial("tcp", carbonlink.Server)
     if err != nil {
@@ -41,7 +46,7 @@ func feedcarbon(status map[string]string, carbonlink *Carbonlink) {
     defer conn.Close()
 
     var message string
-    for mn, ms := range status {
+    for mn, ms := range status.S {
         message = message + fmt.Sprintf("%s.%s %s %d\n", carbonlink.Client, mn, ms, time.Now().Unix())
     }
 
@@ -52,7 +57,7 @@ func feedcarbon(status map[string]string, carbonlink *Carbonlink) {
     }
 }
 
-func cmdExec(name string, command string, timeout time.Duration, status map[string]string, wg *sync.WaitGroup) {
+func cmdExec(name string, command string, timeout time.Duration, status Status, wg *sync.WaitGroup) {
 
     defer wg.Done()
     ch := make(chan string, 1)
@@ -68,7 +73,9 @@ func cmdExec(name string, command string, timeout time.Duration, status map[stri
             metrics := strings.Split(strings.Trim(result,"\n"), "|")
             if len(nsl) == len(metrics) {
                 for i, n := range nsl {
-                    status[n] = metrics[i]
+                    status.Lock()
+                    defer status.Unlock()
+                    status.S[n] = metrics[i]
                 }
             } else {
                 log.Panic("number between metrics and name not match")
@@ -98,7 +105,9 @@ func main() {
     flag.Parse()
 
     var wg sync.WaitGroup
-    status := make(map[string]string)
+    status := Status{
+        S: make(map[string]string),
+    }
 
     for {
         conf := loadConf(*f)
